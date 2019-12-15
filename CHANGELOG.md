@@ -1,6 +1,10 @@
-# 2.0 (unreleased)
+# 2.0 (2019-11-30)
 
+- **BREAKING:** Switched to SHA256 for tracking changes to files and reviews of extended attributes.  Use `doorstop review all` followed by `doorstop clear all` to update an existing project. WARNING: This marks all items as reviewed and clears all suspect links.
 - Dropped support for Python 3.5.
+- Fixed a bug with items not getting saved after edits.
+- Added the ability to explicitly name a requirement.
+- Improved the error message when there are multiple root documents.
 
 # 1.6 (2019-08-10)
 

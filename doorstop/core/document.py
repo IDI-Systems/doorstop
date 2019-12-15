@@ -23,6 +23,7 @@ from doorstop.core.base import (
 )
 from doorstop.core.item import Item
 from doorstop.core.types import UID, Level, Prefix
+from doorstop.core.validators.item_validator import ItemValidator
 
 log = common.logger(__name__)
 
@@ -111,8 +112,10 @@ class Document(BaseValidatable, BaseFileObject):  # pylint: disable=R0902
         :return: new :class:`~doorstop.core.document.Document`
 
         """
-        # TODO: raise a specific exception for invalid separator characters?
-        assert not sep or sep in settings.SEP_CHARS
+        # Check separator
+        if sep and sep not in settings.SEP_CHARS:
+            raise DoorstopError("invalid UID separator '{}'".format(sep))
+
         config = os.path.join(path, Document.CONFIG)
 
         # Check for an existing document
@@ -378,7 +381,7 @@ class Document(BaseValidatable, BaseFileObject):  # pylint: disable=R0902
     def next_number(self):
         """Get the next item number for the document."""
         try:
-            number = max(item.number for item in self) + 1
+            number = max(item.uid.number for item in self) + 1
         except ValueError:
             number = 1
         log.debug("next number (local): {}".format(number))
@@ -423,7 +426,7 @@ class Document(BaseValidatable, BaseFileObject):  # pylint: disable=R0902
     # actions ################################################################
 
     # decorators are applied to methods in the associated classes
-    def add_item(self, number=None, level=None, reorder=True, defaults=None):
+    def add_item(self, number=None, level=None, reorder=True, defaults=None, name=None):
         """Create a new item for the document and return it.
 
         :param number: desired item number
@@ -433,8 +436,30 @@ class Document(BaseValidatable, BaseFileObject):  # pylint: disable=R0902
         :return: added :class:`~doorstop.core.item.Item`
 
         """
-        number = max(number or 0, self.next_number)
-        log.debug("next number: {}".format(number))
+        uid = None
+        if name is None:
+            number = max(number or 0, self.next_number)
+            log.debug("next number: {}".format(number))
+            uid = UID(self.prefix, self.sep, number, self.digits)
+        else:
+            try:
+                uid = UID(self.prefix, self.sep, int(name), self.digits)
+            except ValueError:
+                if not self.sep:
+                    msg = "cannot add item with name '{}' to document '{}' without a separator".format(
+                        name, self.prefix
+                    )
+                    raise DoorstopError(msg)
+                if self.sep not in settings.SEP_CHARS:
+                    msg = "cannot add item with name '{}' to document '{}' with an invalid separator '{}'".format(
+                        name, self.prefix, self.sep
+                    )
+                    raise DoorstopError(msg)
+                uid = UID(self.prefix, self.sep, name)
+                if uid.prefix != self.prefix or uid.name != name:
+                    msg = "invalid item name '{}'".format(name)
+                    raise DoorstopError(msg)
+
         try:
             last = self.items[-1]
         except IndexError:
@@ -453,7 +478,6 @@ class Document(BaseValidatable, BaseFileObject):  # pylint: disable=R0902
         # constructed items in case the loading fails.
         more_defaults = self._load_with_include(defaults) if defaults else None
 
-        uid = UID(self.prefix, self.sep, number, self.digits)
         item = Item.new(self.tree, self, self.path, self.root, uid, level=next_level)
         if self._attribute_defaults:
             item.set_attributes(self._attribute_defaults)
@@ -753,13 +777,15 @@ class Document(BaseValidatable, BaseFileObject):  # pylint: disable=R0902
         elif settings.CHECK_LEVELS:
             yield from self._get_issues_level(items)
 
+        item_validator = ItemValidator()
+
         # Check each item
         for item in items:
 
             # Check item
             for issue in chain(
                 hook(item=item, document=self, tree=self.tree),
-                item.get_issues(skip=skip),
+                item_validator.get_issues(item, skip=skip),
             ):
 
                 # Prepend the item's UID to yielded exceptions
