@@ -4,6 +4,7 @@
 
 import functools
 import os
+import linecache
 from typing import Any, List
 
 from doorstop import common, settings
@@ -657,7 +658,7 @@ class Item(BaseFileObject):  # pylint: disable=R0902
             log.debug("no external reference to search for")
             return []
         if not settings.CACHE_PATHS:
-            pyficache.clear_file_cache()
+            linecache.clearcache()
 
         references = []
         for ref_item in self.references:

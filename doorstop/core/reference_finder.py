@@ -4,8 +4,7 @@
 
 import os
 import re
-
-import pyficache
+import linecache
 
 from doorstop import common, settings
 from doorstop.common import DoorstopError
@@ -46,14 +45,20 @@ class ReferenceFinder:
             if os.path.splitext(filename)[-1] in settings.SKIP_EXTS:
                 continue
             # Search for the reference in the file
-            lines = pyficache.getlines(path)
-            if lines is None:
-                log.trace("unable to read lines from: {}".format(path))  # type: ignore
-                continue
-            for lineno, line in enumerate(lines, start=1):
+            lineno = 1
+            while True:
+                try:
+                    line = linecache.getline(path, lineno)
+                except UnicodeDecodeError:
+                    break
+                except SyntaxError:
+                    break
+                if line == '':
+                    break
                 if regex.search(line):
                     log.debug("found ref: {}".format(relpath))
                     return relpath, lineno
+                lineno += 1
 
         msg = "external reference not found: {}".format(ref)
         raise DoorstopError(msg)
@@ -81,21 +86,24 @@ class ReferenceFinder:
                     return relpath, None
 
                 # Search for the reference in the file
-                lines = pyficache.getlines(path)
-                if lines is None:
-                    log.trace(  # type: ignore
-                        "unable to read lines from: {}".format(path)
-                    )  # type: ignore
-                    continue
-
                 log.debug("searching for ref '{}'...".format(keyword))
                 pattern = r"(\b|\W){}(\b|\W)".format(re.escape(keyword))
                 log.trace("regex: {}".format(pattern))  # type: ignore
                 regex = re.compile(pattern)
-                for lineno, line in enumerate(lines, start=1):
+                lineno = 1
+                while True:
+                    try:
+                        line = linecache.getline(path, lineno)
+                    except UnicodeDecodeError:
+                        break
+                    except SyntaxError:
+                        break
+                    if line == '':
+                        break
                     if regex.search(line):
                         log.debug("found ref: {}".format(relpath))
                         return relpath, lineno
+                    lineno += 1
 
         msg = "external reference not found: {}".format(ref_path)
         raise DoorstopError(msg)
