@@ -4,10 +4,9 @@
 
 import os
 import re
-import linecache
-
 import time
-
+import linecache
+import pyficache
 from doorstop import common, settings
 from doorstop.common import DoorstopError
 
@@ -35,12 +34,10 @@ class SimpleProfiler:
     def display_stats(self, title):
         print(title)
         print("\tIterations:", self.iterations)
-        print("\tTotal Time:", self.total_time)
-        print("\tMax:", self.max_time)
-        print("\tMin:", self.min_time)
-        print("\tAvg:", self.total_time/self.iterations)
-
-
+        print("\tTotal Time:", self.total_time*1e6)
+        print("\tMax:", self.max_time*1e6)
+        print("\tMin:", self.min_time*1e6)
+        print("\tAvg:", self.total_time/self.iterations*1e6)
 
 class ReferenceFinder:
     """Finds files referenced from an Item."""
@@ -58,7 +55,7 @@ class ReferenceFinder:
             filename) or None (when no reference set)
 
         """
-        profiler = SimpleProfiler()
+        # profiler = SimpleProfiler()
         # Search for the external reference
         log.debug("searching for ref '{}'...".format(ref))
         pattern = r"(\b|\W){}(\b|\W)".format(re.escape(ref))
@@ -75,25 +72,29 @@ class ReferenceFinder:
             if os.path.splitext(filename)[-1] in settings.SKIP_EXTS:
                 continue
             # Search for the reference in the file
-            profiler.start_timer()
-            lineno = 1
-            while True:
-                try:
-                    line = linecache.getline(path, lineno)
-                except UnicodeDecodeError:
-                    break
-                except SyntaxError:
-                    break
-                if line == '':
-                    break
+            # profiler.start_timer()
+            try:
+                lines = linecache.getlines(path)
+                # lines = pyficache.getlines(path)
+            except UnicodeDecodeError:
+                # profiler.end_time()
+                continue
+            except SyntaxError:
+                # profiler.end_time()
+                continue
+
+            if not lines:
+                log.trace("unable to read lines from: {}".format(path))  # type: ignore
+                # profiler.end_time()
+                continue
+            for lineno, line in enumerate(lines, start=1):
                 if regex.search(line):
                     log.debug("found ref: {}".format(relpath))
-                    profiler.end_time()
-                    profiler.display_stats(f"Stats for: {item_path}")
+                    # profiler.end_time()
+                    # profiler.display_stats(f"Stats for {item_path}, {path}")
                     return relpath, lineno
-                lineno += 1
-            profiler.end_time()
-        profiler.display_stats(f"Stats for: {item_path}")
+            # profiler.end_time()
+        # profiler.display_stats(f"Stats for {item_path}")
         msg = "external reference not found: {}".format(ref)
         raise DoorstopError(msg)
 
@@ -120,24 +121,26 @@ class ReferenceFinder:
                     return relpath, None
 
                 # Search for the reference in the file
+                try:
+                    lines = linecache.getlines(path)
+                except UnicodeDecodeError:
+                    continue
+                except SyntaxError:
+                    continue
+                if lines is None:
+                    log.trace(  # type: ignore
+                        "unable to read lines from: {}".format(path)
+                    )  # type: ignore
+                    continue
+
                 log.debug("searching for ref '{}'...".format(keyword))
                 pattern = r"(\b|\W){}(\b|\W)".format(re.escape(keyword))
                 log.trace("regex: {}".format(pattern))  # type: ignore
                 regex = re.compile(pattern)
-                lineno = 1
-                while True:
-                    try:
-                        line = linecache.getline(path, lineno)
-                    except UnicodeDecodeError:
-                        break
-                    except SyntaxError:
-                        break
-                    if line == '':
-                        break
+                for lineno, line in enumerate(lines, start=1):
                     if regex.search(line):
                         log.debug("found ref: {}".format(relpath))
                         return relpath, lineno
-                    lineno += 1
 
         msg = "external reference not found: {}".format(ref_path)
         raise DoorstopError(msg)
